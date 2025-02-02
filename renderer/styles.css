@@ -1,0 +1,20 @@
+html, body {
+    height: 100%;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f0f0; /* Optional: Hintergrundfarbe */
+}
+
+
+#qr-container {
+    text-align: center; /* Zentriert das Bild horizontal */
+}
+
+#qr-code {
+    max-width: 90%; /* Das Bild nimmt maximal 90% der Breite des Containers ein */
+    max-height: 90vh; /* Das Bild nimmt maximal 90% der Höhe des Viewports ein */
+    width: auto; /* Behält das Seitenverhältnis bei */
+    height: auto; /* Behält das Seitenverhältnis bei */
+}
