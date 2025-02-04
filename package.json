@@ -1,0 +1,15 @@
+{
+    "name": "shader-streaming",
+    "version": "1.0.0",
+    "description": "Shader Streaming Application",
+    "scripts": {
+      "dev": "concurrently \"npm run dev:server\" \"npm run dev:ui\" \"npm run dev:renderer\"",
+      "dev:server": "cd server && node server.js",
+      "dev:ui": "cd ui && npm run dev -- --host",
+      "dev:renderer": "cd renderer && python3 -m http.server 5500",
+      "install:all": "npm install && cd server && npm install && cd ../ui && npm install"
+    },
+    "devDependencies": {
+      "concurrently": "^8.2.2"
+    }
+  }

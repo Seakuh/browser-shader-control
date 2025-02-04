@@ -1,243 +1,206 @@
 // 🎨 WebGL Shader Renderer mit WebSockets & QR-Code 🖥️
 // 🚀 Lädt QR-Code, verbindet mit WebSocket, zeigt Shader-Canvas an 🎛️
 
-document.addEventListener("DOMContentLoaded", () => {
-    console.log("🚀 Initialisierung gestartet...");
+import { SHADERS } from "./shaders.js";
 
-    // 📌 HTML-Elemente abrufen
-    const qrContainer = document.getElementById("qr-container"); // QR-Code Box 📷
-    const qrCodeImg = document.getElementById("qr-code"); // QR-Code Bild 🖼️
-    const canvas = document.getElementById("glCanvas"); // WebGL Canvas 🖥️
-    const gl = canvas.getContext("webgl"); // WebGL Rendering-Context 🎨
+let gl;
+let program;
+let timeLocation;
+let resolutionLocation;
+let startTime;
+let ws;
 
-    // 🌐 Server- & WebSocket-Einstellungen
-    const SERVER_IP = "192.168.53.236";  // Ersetze mit deiner Server-IP 🌍
-    const SERVER_PORT = 3000; // Express-Server für QR-Code 🚀
-    const WS_PORT = 8080; // WebSocket Server 📡
+// WebGL Setup und Initialisierung
+function initGL() {
+    const canvas = document.getElementById('glCanvas');
+    gl = canvas.getContext('webgl');
 
-    // 🖼️ 1️⃣ Funktion: QR-Code vom Server abrufen
-    async function fetchQRCode() {
-        try {
-            console.log("📡 Lade QR-Code...");
-            const response = await fetch(`http://${SERVER_IP}:${SERVER_PORT}/qrcode`);
-            const data = await response.json(); // 📥 JSON richtig parsen
-            qrCodeImg.src = data.qr; // 🖼️ Bild-URL setzen
-            console.log("✅ QR-Code erfolgreich geladen!");
-        } catch (error) {
-            console.error("❌ Fehler beim Laden des QR-Codes:", error);
-        }
+    if (!gl) {
+        console.error('❌ WebGL nicht verfügbar');
+        return;
     }
-    
 
-    // 🔌 2️⃣ Funktion: WebSocket-Verbindung aufbauen
-    function connectWebSocket() {
-        console.log("📡 Versuche WebSocket-Verbindung...");
-        const socket = new WebSocket(`ws://${SERVER_IP}:${WS_PORT}`);
-    
-        socket.onopen = () => {
-            console.log("✅ Renderer-WebSocket verbunden!");
-            socket.send(JSON.stringify({ type: "renderer_connected" })); // 🟢 Renderer meldet sich an
-        };
-    
-        socket.onmessage = (event) => {
-            console.log("📩 Nachricht empfangen im Renderer:", event.data);
-            const data = JSON.parse(event.data);
-    
-            if (data.type === "hide_qr") {
-                console.log("🎭 UI verbunden! QR-Code verstecken & Shader anzeigen!");
-                qrContainer.style.display = "none"; 
-                startShaderRendering(); // 🎨 Starte WebGL Rendering!
-            }
-            
-            handleWebSocketMessage(data);
-        };
-    
-        socket.onerror = (error) => console.error("❌ WebSocket-Fehler im Renderer:", error);
-        socket.onclose = () => console.log("🔌 Renderer-WebSocket getrennt.");
-    }
-    
-    
-    
-
-    // 🎨 3️⃣ Funktion: Shader-Handling & Rendering
-    function handleWebSocketMessage(data) {
-        console.log("🖥️ WebGL: Nachricht verarbeitet:", data);
-    
-        if (data.type === "scale") {
-            console.log(`🔍 Skaliere Shader: ${data.value}`);
-            gl.uniform1f(scaleLocation, data.value);
-        }
-        if (data.type === "colorR") {
-            console.log(`🔍 Ändere Rot-Wert: ${data.value}`);
-            gl.uniform3f(colorLocation, data.value, 0.0, 0.0);
-        }
-        if (data.type === "colorG") {
-            console.log(`🔍 Ändere Grün-Wert: ${data.value}`);
-            gl.uniform3f(colorLocation, 0.0, data.value, 0.0);
-        }
-        if (data.type === "colorB") {
-            console.log(`🔍 Ändere Blau-Wert: ${data.value}`);
-            gl.uniform3f(colorLocation, 0.0, 0.0, data.value);
-        }
-        if (data.type === "mask") {
-            const maskType = data.value === "circle" ? 0 : data.value === "square" ? 1 : 2;
-            console.log(`🔍 Schablone setzen: ${data.value} (${maskType})`);
-            gl.uniform1i(maskLocation, maskType);
-        }
-    
-        render(); // 🎨 Szene neu rendern
-    }
-    
-
-    // 🎥 4️⃣ Funktion: WebGL Shader Setup
-    function setupWebGL() {
-        console.log("🖥️ Initialisiere WebGL...");
+    // Canvas-Größe setzen
+    function resizeCanvas() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+    }
 
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+}
+
+// Shader kompilieren und einrichten
+function setupShader(fragmentShaderSource) {
         const vertexShaderSource = `
-            attribute vec2 position;
-            uniform float scale;
+        attribute vec4 position;
             void main() {
-                gl_Position = vec4(position * scale, 0.0, 1.0);
+            gl_Position = position;
+        }
+    `;
+
+    // Vertex Shader
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, vertexShaderSource);
+    gl.compileShader(vertexShader);
+
+    // Fragment Shader
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, fragmentShaderSource);
+    gl.compileShader(fragmentShader);
+
+    // Shader-Programm erstellen
+    if (program) {
+        gl.deleteProgram(program);
+    }
+    program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+    // Fehlerprüfung
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error('Shader Programm Fehler:', gl.getProgramInfoLog(program));
+        return;
+    }
+
+    // Attribute und Uniforms
+    const positions = new Float32Array([
+        -1, -1,
+        1, -1,
+        -1, 1,
+        1, 1
+    ]);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+        const positionLocation = gl.getAttribLocation(program, "position");
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+    timeLocation = gl.getUniformLocation(program, "time");
+    resolutionLocation = gl.getUniformLocation(program, "resolution");
+}
+
+// Animation Loop
+function animate() {
+    if (!program) return;
+    
+    gl.useProgram(program);
+    
+    const time = (Date.now() - startTime) * 0.001;
+    gl.uniform1f(timeLocation, time);
+    gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(animate);
+}
+
+// QR Code Management
+//only show qr code 60 secunds after start
+async function setupQRCode() {
+    const qrContainer = document.getElementById('qr-container');
+    const qrImage = document.getElementById('qr-code');
+    
+    try {
+        const response = await fetch('http://localhost:3000/qrcode');
+        const data = await response.json();
+        qrImage.src = data.qr;
+        qrContainer.style.display = 'block';
+    } catch (error) {
+        console.error('❌ QR-Code Fehler:', error);
+    }
+}
+
+// WebSocket Verbindung
+function setupWebSocket() {
+    const WS_PORT = 8080;
+    ws = new WebSocket(`ws://localhost:${WS_PORT}`);
+
+    ws.onopen = () => {
+        console.log('📡 WebSocket verbunden');
+        ws.send(JSON.stringify({ type: 'renderer_connected' }));
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            console.log('📩 Nachricht erhalten:', data);
+
+            switch (data.type) {
+                case 'hide_qr':
+                    document.getElementById('qr-container').style.display = 'none';
+                    break;
+                    
+                case 'shader_select':
+                    if (SHADERS[data.value]) {
+                        console.log(`🎨 Lade Shader: ${data.value}`);
+                        setupShader(SHADERS[data.value]);
+                    }
+                    break;
+                    
+                case 'uniform':
+                    if (program) {
+                        const location = gl.getUniformLocation(program, data.name);
+                        if (location) {
+                            // Unterschiedliche Uniform-Typen behandeln
+                            switch (data.type) {
+                                case 'float':
+                                    gl.uniform1f(location, data.value);
+                                    break;
+                                case 'vec2':
+                                    gl.uniform2f(location, data.value[0], data.value[1]);
+                                    break;
+                                case 'vec3':
+                                    gl.uniform3f(location, data.value[0], data.value[1], data.value[2]);
+                                    break;
+                                case 'scale':
+                                    gl.uniform1f(location, data.value);
+                                    break;
+                            }
+                        }
+                    }
+                    break;
             }
-        `;
+        } catch (error) {
+            console.error('❌ Fehler beim Verarbeiten der Nachricht:', error);
+        }
+    };
 
-        const fragmentShaderSource = `
+    ws.onclose = () => {
+        console.log('🔌 WebSocket getrennt, versuche neu zu verbinden...');
+        setTimeout(setupWebSocket, 2000);
+    };
+}
+
+// Initialer Default-Shader
+const defaultShader = `
             precision mediump float;
-            uniform vec3 color;
-            uniform int mask;
-            void main() {
-                vec2 uv = gl_FragCoord.xy / vec2(800.0, 600.0) - 0.5;
-                float r = length(uv);
-
-                if (mask == 0 && r > 0.3) discard;  // 🟠 Kreis
-                if (mask == 1 && (abs(uv.x) > 0.3 || abs(uv.y) > 0.3)) discard;  // 🟦 Quadrat
-                if (mask == 2 && uv.y < abs(uv.x)) discard;  // 🔺 Dreieck
-
+    
+    uniform float time;
+    uniform vec2 resolution;
+    
+    void main() {
+        vec2 uv = gl_FragCoord.xy/resolution.xy;
+        vec3 color = 0.5 + 0.5*cos(time + uv.xyx + vec3(0,2,4));
                 gl_FragColor = vec4(color, 1.0);
             }
         `;
 
-        function createShader(gl, type, source) {
-            const shader = gl.createShader(type);
-            gl.shaderSource(shader, source);
-            gl.compileShader(shader);
-            return shader;
-        }
+// Startup
+async function init() {
+    initGL();
+    setupShader(SHADERS["RainbowMirror"]);
+    startTime = Date.now();
+    animate();
+    setTimeout(async () => {
+        await setupQRCode();
+    }, 500);
+    setupWebSocket();
+}
 
-        function createProgram(gl, vertexSource, fragmentSource) {
-            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexSource);
-            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
-            const program = gl.createProgram();
-            gl.attachShader(program, vertexShader);
-            gl.attachShader(program, fragmentShader);
-            gl.linkProgram(program);
-            return program;
-        }
-
-        const program = createProgram(gl, vertexShaderSource, fragmentShaderSource);
-        gl.useProgram(program);
-
-        const positionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-            -0.5, -0.5,  0.5, -0.5,  -0.5, 0.5,
-             0.5, -0.5,  0.5, 0.5,  -0.5, 0.5
-        ]), gl.STATIC_DRAW);
-
-        const positionLocation = gl.getAttribLocation(program, "position");
-        gl.enableVertexAttribArray(positionLocation);
-        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-
-        scaleLocation = gl.getUniformLocation(program, "scale");
-        colorLocation = gl.getUniformLocation(program, "color");
-        maskLocation = gl.getUniformLocation(program, "mask");
-
-        gl.uniform1f(scaleLocation, 1.0);
-        gl.uniform3f(colorLocation, 1.0, 0.0, 0.0); // 🎨 Standardfarbe Rot
-        gl.uniform1i(maskLocation, 0); // 🟠 Standard-Schablone: Kreis
-
-        render();
-    }
-
-    // 🖼️ 5️⃣ Funktion: WebGL Render-Aufruf
-    function render() {
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-    }
-
-    function startShaderRendering() {
-        console.log("🖥️ Starte WebGL Shader Rendering...");
-        
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    
-        const vertexShaderSource = `
-            attribute vec2 position;
-            void main() {
-                gl_Position = vec4(position, 0.0, 1.0);
-            }
-        `;
-    
-        const fragmentShaderSource = `
-            precision mediump float;
-            uniform float time;
-            void main() {
-                float r = sin(time) * 0.5 + 0.5;
-                float g = sin(time + 2.0) * 0.5 + 0.5;
-                float b = sin(time + 4.0) * 0.5 + 0.5;
-                gl_FragColor = vec4(r, g, b, 1.0);
-            }
-        `;
-    
-        function createShader(gl, type, source) {
-            const shader = gl.createShader(type);
-            gl.shaderSource(shader, source);
-            gl.compileShader(shader);
-            return shader;
-        }
-    
-        function createProgram(gl, vertexSource, fragmentSource) {
-            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexSource);
-            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
-            const program = gl.createProgram();
-            gl.attachShader(program, vertexShader);
-            gl.attachShader(program, fragmentShader);
-            gl.linkProgram(program);
-            return program;
-        }
-    
-        const program = createProgram(gl, vertexShaderSource, fragmentShaderSource);
-        gl.useProgram(program);
-    
-        const positionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-            -1, -1,  1, -1,  -1, 1,
-             1, -1,  1,  1,  -1, 1
-        ]), gl.STATIC_DRAW);
-    
-        const positionLocation = gl.getAttribLocation(program, "position");
-        gl.enableVertexAttribArray(positionLocation);
-        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-    
-        const timeLocation = gl.getUniformLocation(program, "time");
-    
-        function render() {
-            const time = performance.now() / 1000; // Zeit in Sekunden
-            gl.uniform1f(timeLocation, time);
-            gl.clear(gl.COLOR_BUFFER_BIT);
-            gl.drawArrays(gl.TRIANGLES, 0, 6);
-            requestAnimationFrame(render);
-        }
-    
-        render();
-    }
-    
-
-    // 🚀 6️⃣ Initialisierung starten
-    fetchQRCode(); // 🔄 Lade QR-Code
-    connectWebSocket(); // 🌐 Verbinde mit WebSocket
-    setupWebGL(); // 🖥️ Starte WebGL
-});
+// Start wenn das DOM geladen ist
+document.addEventListener('DOMContentLoaded', init);

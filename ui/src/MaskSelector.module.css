@@ -1,0 +1,80 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.selectWrapper {
+  position: relative;
+  width: 280px;
+  max-width: 90vw;
+  margin-bottom: 30px;
+}
+
+.select {
+  width: 100%;
+  padding: 12px 45px 12px 20px;
+  font-size: 16px;
+  background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+  color: #fff;
+  border: 2px solid #333;
+  border-radius: 12px;
+  appearance: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.select:focus {
+  outline: none;
+  border-color: #00ff9d;
+  box-shadow: 0 0 15px rgba(0, 255, 157, 0.2);
+}
+
+.selectIcon {
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 20px;
+}
+
+.faderGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  width: 100%;
+  max-width: 1200px;
+  padding: 20px;
+  justify-items: center;
+}
+
+@media (max-width: 768px) {
+  .faderGrid {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+  
+  .selectWrapper {
+    width: 90%;
+  }
+}
+
+.title {
+  color: #fff;
+  font-size: 24px;
+  margin-bottom: 20px;
+  text-align: center;
+  font-weight: 300;
+  letter-spacing: 1px;
+}
+
+.noShader {
+  color: #666;
+  text-align: center;
+  padding: 20px;
+  font-style: italic;
+} 
